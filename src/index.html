@@ -1,0 +1,666 @@
+// Dancing Line 3D Game for Source Academy
+// Using Three.js CDN for 3D graphics
+
+/* ---------------------------------------------------------------
+   1️⃣  Dynamically load Three.js, then start the game
+---------------------------------------------------------------- */
+(function loadThree() {
+  const tag = document.createElement('script');
+  tag.src = 'https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js';
+  tag.onload = initDancingLine;
+  tag.onerror = () => console.error('Failed to load Three.js from CDN');
+  document.head.appendChild(tag);
+})();
+
+/* ---------------------------------------------------------------
+   2️⃣  Game State & Globals (Source Academy friendly)
+---------------------------------------------------------------- */
+let scene = null;
+let camera = null;
+let renderer = null;
+let container = null;
+let gameContainer = null;
+
+// Game objects
+let dancingLine = null;
+let linePath = [];
+let obstacles = [];
+let gems = [];
+let platforms = [];
+
+// Game state
+let gameState = 'menu'; // 'menu', 'playing', 'paused', 'gameOver'
+let score = 0;
+let level = 1;
+let linePosition = { x: 0, y: 0, z: 0 };
+let lineDirection = 'forward';
+let gameSpeed = 0.05;
+let cameraDistance = 10;
+
+// UI elements
+let uiOverlay = null;
+let scoreElement = null;
+let menuElement = null;
+
+/* ---------------------------------------------------------------
+   3️⃣  Initialize Dancing Line Game
+---------------------------------------------------------------- */
+function initDancingLine() {
+  createGameContainer();
+  setupThreeJS();
+  createUI();
+  createGameWorld();
+  setupControls();
+  startMenuState();
+  animate();
+  
+  display("🎮 Dancing Line 3D loaded! Click the game area to play!");
+}
+
+/* ---------------------------------------------------------------
+   4️⃣  Create Game Container
+---------------------------------------------------------------- */
+function createGameContainer() {
+  // Main game container
+  container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '0';
+  container.style.top = '0';
+  container.style.width = '100%';
+  container.style.height = '100vh';
+  container.style.zIndex = '9999';
+  container.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
+  document.body.appendChild(container);
+
+  // 3D canvas container
+  gameContainer = document.createElement('div');
+  gameContainer.style.position = 'absolute';
+  gameContainer.style.left = '0';
+  gameContainer.style.top = '0';
+  gameContainer.style.width = '100%';
+  gameContainer.style.height = '100%';
+  container.appendChild(gameContainer);
+}
+
+/* ---------------------------------------------------------------
+   5️⃣  Setup Three.js Scene
+---------------------------------------------------------------- */
+function setupThreeJS() {
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x1a1a2e, 50, 100);
+
+  camera = new THREE.PerspectiveCamera(
+    75,
+    container.clientWidth / container.clientHeight,
+    0.1,
+    1000
+  );
+  camera.position.set(0, 5, cameraDistance);
+  camera.lookAt(0, 0, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setClearColor(0x1a1a2e, 1);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  gameContainer.appendChild(renderer.domElement);
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+  scene.add(ambientLight);
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(10, 10, 5);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 2048;
+  directionalLight.shadow.mapSize.height = 2048;
+  scene.add(directionalLight);
+
+  window.addEventListener('resize', onWindowResize);
+}
+
+/* ---------------------------------------------------------------
+   6️⃣  Create UI Overlay
+---------------------------------------------------------------- */
+function createUI() {
+  uiOverlay = document.createElement('div');
+  uiOverlay.style.position = 'absolute';
+  uiOverlay.style.top = '0';
+  uiOverlay.style.left = '0';
+  uiOverlay.style.width = '100%';
+  uiOverlay.style.height = '100%';
+  uiOverlay.style.pointerEvents = 'none';
+  uiOverlay.style.fontFamily = 'Arial, sans-serif';
+  uiOverlay.style.color = '#00ffff';
+  container.appendChild(uiOverlay);
+
+  // Score display
+  scoreElement = document.createElement('div');
+  scoreElement.style.position = 'absolute';
+  scoreElement.style.top = '20px';
+  scoreElement.style.left = '20px';
+  scoreElement.style.fontSize = '24px';
+  scoreElement.style.fontWeight = 'bold';
+  scoreElement.style.textShadow = '0 0 10px rgba(0, 255, 255, 0.8)';
+  scoreElement.innerHTML = 'Score: 0<br>Level: 1';
+  uiOverlay.appendChild(scoreElement);
+
+  // Menu overlay
+  menuElement = document.createElement('div');
+  menuElement.style.position = 'absolute';
+  menuElement.style.top = '50%';
+  menuElement.style.left = '50%';
+  menuElement.style.transform = 'translate(-50%, -50%)';
+  menuElement.style.textAlign = 'center';
+  menuElement.style.pointerEvents = 'auto';
+  menuElement.innerHTML = `
+    <h1 style="font-size: 4rem; margin-bottom: 20px; text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);">
+      DANCING LINE
+    </h1>
+    <p style="font-size: 1.2rem; margin-bottom: 40px; color: #ff6b9d;">
+      3D Edition - Source Academy
+    </p>
+    <button id="startBtn" style="
+      background: linear-gradient(145deg, rgba(255, 107, 157, 0.3), rgba(255, 107, 157, 0.1));
+      border: 2px solid #ff6b9d;
+      color: #ff6b9d;
+      padding: 15px 30px;
+      font-size: 1.5rem;
+      border-radius: 10px;
+      cursor: pointer;
+      margin: 10px;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+    ">START GAME</button>
+    <br>
+    <button id="instructionsBtn" style="
+      background: linear-gradient(145deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.1));
+      border: 2px solid #00ffff;
+      color: #00ffff;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border-radius: 10px;
+      cursor: pointer;
+      margin: 10px;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+    ">INSTRUCTIONS</button>
+  `;
+  uiOverlay.appendChild(menuElement);
+
+  // Button hover effects
+  const startBtn = menuElement.querySelector('#startBtn');
+  const instructionsBtn = menuElement.querySelector('#instructionsBtn');
+  
+  startBtn.addEventListener('mouseenter', () => {
+    startBtn.style.transform = 'scale(1.05)';
+    startBtn.style.boxShadow = '0 0 20px rgba(255, 107, 157, 0.5)';
+  });
+  
+  startBtn.addEventListener('mouseleave', () => {
+    startBtn.style.transform = 'scale(1)';
+    startBtn.style.boxShadow = 'none';
+  });
+
+  instructionsBtn.addEventListener('mouseenter', () => {
+    instructionsBtn.style.transform = 'scale(1.05)';
+    instructionsBtn.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.5)';
+  });
+  
+  instructionsBtn.addEventListener('mouseleave', () => {
+    instructionsBtn.style.transform = 'scale(1)';
+    instructionsBtn.style.boxShadow = 'none';
+  });
+
+  startBtn.addEventListener('click', startGame);
+  instructionsBtn.addEventListener('click', showInstructions);
+}
+
+/* ---------------------------------------------------------------
+   7️⃣  Create Game World
+---------------------------------------------------------------- */
+function createGameWorld() {
+  // Create dancing line
+  createDancingLine();
+  
+  // Create initial platform
+  createPlatform(0, 0, 0, 20, 0.2, 2);
+  
+  // Create some obstacles and gems
+  generateLevel();
+}
+
+function createDancingLine() {
+  const lineGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
+  const lineMaterial = new THREE.MeshLambertMaterial({ 
+    color: 0x00ffff,
+    emissive: 0x002244
+  });
+  
+  dancingLine = new THREE.Mesh(lineGeometry, lineMaterial);
+  dancingLine.position.set(0, 0.6, 0);
+  dancingLine.castShadow = true;
+  scene.add(dancingLine);
+
+  // Add glowing effect
+  const glowGeometry = new THREE.CylinderGeometry(0.15, 0.15, 1.1, 8);
+  const glowMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0x00ffff,
+    transparent: true,
+    opacity: 0.3
+  });
+  const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+  dancingLine.add(glow);
+}
+
+function createPlatform(x, y, z, width, height, depth) {
+  const platformGeometry = new THREE.BoxGeometry(width, height, depth);
+  const platformMaterial = new THREE.MeshLambertMaterial({ color: 0x444444 });
+  
+  const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+  platform.position.set(x, y, z);
+  platform.receiveShadow = true;
+  scene.add(platform);
+  platforms.push(platform);
+  
+  return platform;
+}
+
+function createObstacle(x, y, z) {
+  const obstacleGeometry = new THREE.BoxGeometry(1, 2, 1);
+  const obstacleMaterial = new THREE.MeshLambertMaterial({ 
+    color: 0xff4444,
+    emissive: 0x220000
+  });
+  
+  const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+  obstacle.position.set(x, y, z);
+  obstacle.castShadow = true;
+  scene.add(obstacle);
+  obstacles.push(obstacle);
+  
+  return obstacle;
+}
+
+function createGem(x, y, z) {
+  const gemGeometry = new THREE.OctahedronGeometry(0.3);
+  const gemMaterial = new THREE.MeshLambertMaterial({ 
+    color: 0xffd700,
+    emissive: 0x444400
+  });
+  
+  const gem = new THREE.Mesh(gemGeometry, gemMaterial);
+  gem.position.set(x, y, z);
+  gem.castShadow = true;
+  scene.add(gem);
+  gems.push(gem);
+  
+  return gem;
+}
+
+function generateLevel() {
+  // Clear existing level objects
+  obstacles.forEach(obj => scene.remove(obj));
+  gems.forEach(obj => scene.remove(obj));
+  obstacles = [];
+  gems = [];
+
+  // Generate platforms, obstacles, and gems for the level
+  for (let i = 1; i <= 20; i++) {
+    const z = -i * 3;
+    
+    // Create platform segments
+    if (i % 3 === 0) {
+      createPlatform(Math.random() * 4 - 2, 0, z, 2, 0.2, 2);
+    } else {
+      createPlatform(0, 0, z, 6, 0.2, 2);
+    }
+    
+    // Add obstacles
+    if (i > 2 && Math.random() > 0.7) {
+      createObstacle(Math.random() * 4 - 2, 1, z);
+    }
+    
+    // Add gems
+    if (Math.random() > 0.6) {
+      createGem(Math.random() * 4 - 2, 1.5, z);
+    }
+  }
+}
+
+/* ---------------------------------------------------------------
+   8️⃣  Game Control Functions
+---------------------------------------------------------------- */
+function startGame() {
+  gameState = 'playing';
+  menuElement.style.display = 'none';
+  score = 0;
+  level = 1;
+  linePosition = { x: 0, y: 0.6, z: 0 };
+  
+  // Reset line position
+  dancingLine.position.set(0, 0.6, 0);
+  camera.position.set(0, 5, cameraDistance);
+  
+  updateScore();
+  display("🎮 Dancing Line started! Use ARROW KEYS or WASD to move, SPACE to jump!");
+}
+
+function showInstructions() {
+  const instructions = `
+🎯 DANCING LINE 3D INSTRUCTIONS
+
+🎮 Controls:
+• Arrow Keys / WASD - Move the line
+• SPACE - Jump over obstacles
+• P - Pause/Resume
+• ESC - Return to menu
+
+🏆 Gameplay:
+• Navigate the dancing line through the 3D world
+• Avoid red obstacles
+• Collect gold gems for points
+• Each gem = +10 points
+• Each level = +100 bonus points
+
+⚠️ Tips:
+• Time your movements carefully
+• Jump over obstacles at the right moment
+• Collect gems to increase your score
+• The line will automatically move forward
+
+Ready to dance? Click START GAME!
+  `;
+  
+  display(instructions);
+}
+
+function pauseGame() {
+  if (gameState === 'playing') {
+    gameState = 'paused';
+    display("⏸️ GAME PAUSED - Press P to resume");
+  } else if (gameState === 'paused') {
+    gameState = 'playing';
+    display("▶️ GAME RESUMED");
+  }
+}
+
+function gameOver() {
+  gameState = 'gameOver';
+  display("💀 GAME OVER! Final Score: " + score);
+  
+  // Show restart option
+  setTimeout(() => {
+    menuElement.style.display = 'block';
+    menuElement.querySelector('h1').textContent = 'GAME OVER';
+    menuElement.querySelector('p').textContent = 'Final Score: ' + score;
+  }, 2000);
+}
+
+function updateScore() {
+  scoreElement.innerHTML = `Score: ${score}<br>Level: ${level}`;
+}
+
+/* ---------------------------------------------------------------
+   9️⃣  Game Physics & Collision Detection
+---------------------------------------------------------------- */
+function updateGameLogic() {
+  if (gameState !== 'playing') return;
+
+  // Move line forward automatically
+  linePosition.z -= gameSpeed;
+  dancingLine.position.z = linePosition.z;
+
+  // Update camera to follow line
+  camera.position.z = linePosition.z + cameraDistance;
+  camera.lookAt(linePosition.x, linePosition.y, linePosition.z);
+
+  // Check for gem collection
+  gems.forEach((gem, index) => {
+    const distance = dancingLine.position.distanceTo(gem.position);
+    if (distance < 0.8) {
+      scene.remove(gem);
+      gems.splice(index, 1);
+      score += 10;
+      updateScore();
+      display("💎 Gem collected! +10 points");
+    }
+  });
+
+  // Check for obstacle collision
+  obstacles.forEach(obstacle => {
+    const distance = dancingLine.position.distanceTo(obstacle.position);
+    if (distance < 0.8) {
+      gameOver();
+    }
+  });
+
+  // Check if line falls off platform
+  if (dancingLine.position.y < -5) {
+    gameOver();
+  }
+
+  // Level progression
+  if (Math.abs(linePosition.z) > level * 60) {
+    level++;
+    score += 100;
+    gameSpeed += 0.01;
+    updateScore();
+    generateLevel();
+    display("🎉 LEVEL " + level + "! Speed increased! +100 bonus points");
+  }
+
+  // Animate gems
+  gems.forEach(gem => {
+    gem.rotation.y += 0.05;
+    gem.position.y += Math.sin(Date.now() * 0.001 + gem.position.x) * 0.01;
+  });
+}
+
+/* ---------------------------------------------------------------
+   🔟  Input Controls
+---------------------------------------------------------------- */
+function setupControls() {
+  document.addEventListener('keydown', handleKeyDown);
+  document.addEventListener('keyup', handleKeyUp);
+}
+
+function handleKeyDown(event) {
+  if (gameState !== 'playing') {
+    if (event.code === 'KeyP') pauseGame();
+    if (event.code === 'Escape') startMenuState();
+    return;
+  }
+
+  switch (event.code) {
+    case 'ArrowLeft':
+    case 'KeyA':
+      moveLineLeft();
+      break;
+    case 'ArrowRight':
+    case 'KeyD':
+      moveLineRight();
+      break;
+    case 'ArrowUp':
+    case 'KeyW':
+      moveLineUp();
+      break;
+    case 'ArrowDown':
+    case 'KeyS':
+      moveLineDown();
+      break;
+    case 'Space':
+      event.preventDefault();
+      jumpLine();
+      break;
+    case 'KeyP':
+      pauseGame();
+      break;
+    case 'Escape':
+      startMenuState();
+      break;
+  }
+}
+
+function handleKeyUp(event) {
+  // Handle key releases if needed
+}
+
+function moveLineLeft() {
+  if (linePosition.x > -3) {
+    linePosition.x -= 0.5;
+    dancingLine.position.x = linePosition.x;
+  }
+}
+
+function moveLineRight() {
+  if (linePosition.x < 3) {
+    linePosition.x += 0.5;
+    dancingLine.position.x = linePosition.x;
+  }
+}
+
+function moveLineUp() {
+  if (linePosition.y < 4) {
+    linePosition.y += 0.3;
+    dancingLine.position.y = linePosition.y;
+  }
+}
+
+function moveLineDown() {
+  if (linePosition.y > 0.6) {
+    linePosition.y -= 0.3;
+    dancingLine.position.y = linePosition.y;
+  }
+}
+
+function jumpLine() {
+  // Simple jump animation
+  const originalY = dancingLine.position.y;
+  dancingLine.position.y += 2;
+  
+  setTimeout(() => {
+    dancingLine.position.y = originalY;
+  }, 300);
+}
+
+/* ---------------------------------------------------------------
+   1️⃣1️⃣  Menu State
+---------------------------------------------------------------- */
+function startMenuState() {
+  gameState = 'menu';
+  menuElement.style.display = 'block';
+  menuElement.querySelector('h1').textContent = 'DANCING LINE';
+  menuElement.querySelector('p').textContent = '3D Edition - Source Academy';
+}
+
+/* ---------------------------------------------------------------
+   1️⃣2️⃣  Window Resize Handler
+---------------------------------------------------------------- */
+function onWindowResize() {
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+/* ---------------------------------------------------------------
+   1️⃣3️⃣  Main Animation Loop
+---------------------------------------------------------------- */
+function animate() {
+  requestAnimationFrame(animate);
+  
+  updateGameLogic();
+  
+  // Render the scene
+  renderer.render(scene, camera);
+}
+
+/* ---------------------------------------------------------------
+   1️⃣4️⃣  Public API for Source Academy
+---------------------------------------------------------------- */
+
+// Main game function
+function dancing_line_3d() {
+  display("🎮 Loading Dancing Line 3D...");
+  display("A 3D dancing line game using Three.js");
+  display("The game will appear in a full-screen overlay");
+  return "Dancing Line 3D initialization started!";
+}
+
+// Quick start function
+function start_dancing_line() {
+  if (gameState === 'menu') {
+    startGame();
+  } else {
+    display("Game is already running!");
+  }
+}
+
+// Control functions for Source Academy console
+function move_left() {
+  moveLineLeft();
+  return "Moved left";
+}
+
+function move_right() {
+  moveLineRight();
+  return "Moved right";
+}
+
+function move_up() {
+  moveLineUp();
+  return "Moved up";
+}
+
+function move_down() {
+  moveLineDown();
+  return "Moved down";
+}
+
+function jump() {
+  jumpLine();
+  return "Jumped!";
+}
+
+function pause_game() {
+  pauseGame();
+  return gameState === 'paused' ? "Game paused" : "Game resumed";
+}
+
+function get_game_status() {
+  return {
+    state: gameState,
+    score: score,
+    level: level,
+    position: linePosition
+  };
+}
+
+function close_game() {
+  if (container && container.parentNode) {
+    container.parentNode.removeChild(container);
+    display("🎮 Dancing Line 3D closed");
+  }
+  return "Game closed";
+}
+
+/* ---------------------------------------------------------------
+   1️⃣5️⃣  Auto-start message
+---------------------------------------------------------------- */
+display("🎮 Dancing Line 3D loaded successfully!");
+display("Commands:");
+display("• dancing_line_3d() - Show game info");
+display("• start_dancing_line() - Quick start");
+display("• move_left(), move_right(), move_up(), move_down() - Manual controls");
+display("• jump() - Jump over obstacles");
+display("• pause_game() - Pause/resume");
+display("• get_game_status() - Check game state");
+display("• close_game() - Close the game");
+display("");
+display("🎯 The game will load automatically with full 3D graphics!");
+
+// Auto-start the initialization
+dancing_line_3d;
