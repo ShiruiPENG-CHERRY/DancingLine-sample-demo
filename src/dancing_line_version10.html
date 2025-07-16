@@ -14,21 +14,24 @@ mapScript.textContent = JSON.stringify(importMap);
 document.head.appendChild(mapScript);
 
 (async function () {
-  const threeModule = await import("three");
-  const THREE = threeModule.default || threeModule;
-  window.THREE = THREE;
+  try {
+    const threeModule = await import("three");
+    const THREE = threeModule.default || threeModule;
+    window.THREE = THREE;
 
-  const loaderMod = await import("three/examples/jsm/loaders/OBJLoader.js");
-  const OBJLoader = loaderMod.OBJLoader;
-  window.OBJLoader = OBJLoader;
+    const loaderMod = await import("three/examples/jsm/loaders/OBJLoader.js");
+    const OBJLoader = loaderMod.OBJLoader || loaderMod.default?.OBJLoader || THREE.OBJLoader;
+    window.objLoader = new OBJLoader(); // Global instance
 
-  const mtlLoaderMod = await import("three/examples/jsm/loaders/MTLLoader.js");
-  const MTLLoader = mtlLoaderMod.MTLLoader;
-  window.MTLLoader = MTLLoader;
+    const mtlLoaderMod = await import("three/examples/jsm/loaders/MTLLoader.js");
+    const MTLLoader = mtlLoaderMod.MTLLoader || mtlLoaderMod.default?.MTLLoader || THREE.MTLLoader;
+    window.mtlLoader = new MTLLoader();
 
-  initDancingLine(THREE, OBJLoader, MTLLoader);
-})().catch(err => console.error("Module load failed:", err));
-
+    initDancingLine(THREE);
+  } catch (err) {
+    console.error("Module load failed:", err);
+  }
+})();
 /* ---------------------------------------------------------------
     🎮  Global Variables
 ---------------------------------------------------------------- */
@@ -1083,7 +1086,7 @@ function createGameWorld(THREE, OBJLoader, MTLLoader) {
 function createPlatform(THREE, objLoader, x, y, z, width, height, depth) {
   const platformMaterial = new THREE.MeshBasicMaterial({ color: 0x444444 });
 
-  objLoader.load(
+  window.objLoader.load(
     'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/map03.obj',
     (obj) => {
       const platform = obj;
@@ -1130,7 +1133,7 @@ function createTree(THREE, objLoader, x, y, z) {
     color: new THREE.Color(Math.random(), Math.random(), Math.random())
   });
 
-  objLoader.load(
+  window.objLoader.load(
     `https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/${randomTree}`,
     (obj) => {
       obj.scale.set(0.15, 0.15, 0.15);
@@ -1194,7 +1197,7 @@ function createGem(THREE, x, y, z) {
 function createCrown(THREE, objLoader, x, y, z, soundIndex) {
   const crownMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-  objLoader.load(
+  window.objLoader.load(
     'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Crown_0.obj',
     (obj) => {
       obj.scale.set(0.5, 0.5, 0.5);
@@ -1273,7 +1276,7 @@ function drawCube(THREE, objLoader) {
   }
 
   if (cubes.length === 0) {
-    objLoader.load(
+    window.objLoader.load(
       'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Cube.obj',
       (obj) => {
         obj.scale.set(0.5, 0.5, 0.5);
@@ -1326,8 +1329,8 @@ function drawCube(THREE, objLoader) {
     gameOver();
     return;
   }
-  const loader = new OBJLoader();
-  loader.load(
+
+  window.loader.load(
     'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Cube.obj',
     (obj) => {
       obj.scale.set(0.5, 0.5, 0.5);
