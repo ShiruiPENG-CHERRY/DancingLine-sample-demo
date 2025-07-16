@@ -116,7 +116,7 @@ async function setupAudio() {
 
 async function loadBackgroundMusic() {
   try {
-    const response = await fetch('https://github.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/blob/main/music.mp3');
+    const response = await fetch('https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/music.mp3');
     const arrayBuffer = await response.arrayBuffer();
     backgroundMusic = await audioContext.decodeAudioData(arrayBuffer);
   } catch (error) {
@@ -1124,8 +1124,8 @@ function createTree(THREE, MTLLoader, x, y, z) {
     color: new THREE.Color(Math.random(), Math.random(), Math.random())
   });
 
-  const objLoader = new THREE.OBJLoader();
-  objLoader.load(
+  const loader = new OBJLoader();
+  loader.load(
     `https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/${randomTree}`,
     (obj) => {
       obj.scale.set(0.15, 0.15, 0.15);
@@ -1165,6 +1165,7 @@ function createTree(THREE, MTLLoader, x, y, z) {
   );
 }
 
+
 function changeTree() {
   for (let i = 0; i < treeCount; i++) {
     if (treeSizes[i] < 10) {
@@ -1174,11 +1175,27 @@ function changeTree() {
   }
 }
 
+function createGem(x, y, z) {
+    const gemGeometry = new THREE.OctahedronGeometry(0.3);
+    const gemMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0xffd700,
+      emissive: 0x444400
+    });
+    
+    const gem = new THREE.Mesh(gemGeometry, gemMaterial);
+    gem.position.set(x, y, z);
+    gem.castShadow = true;
+    scene.add(gem);
+    gems.push(gem);
+    
+    return gem;
+  }
 
-function createCrown(THREE, x, y, z) {
-  const crownMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, emissive: 0x444400 });
-  const objLoader = new THREE.OBJLoader();
-  objLoader.load(
+function createCrown(THREE, OBJLoader, x, y, z, soundIndex) {
+  const crownMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+
+  const loader = new OBJLoader();
+  loader.load(
     'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Crown_0.obj',
     (obj) => {
       obj.scale.set(0.5, 0.5, 0.5);
@@ -1197,7 +1214,6 @@ function createCrown(THREE, x, y, z) {
     undefined,
     (err) => {
       console.error("Error loading Crown_0.obj:", err);
-      console.error("Error loading Crown_0.obj:", err);
       // Fallback to BoxGeometry
       const fallbackGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
       const fallbackCrown = new THREE.Mesh(fallbackGeometry, crownMaterial);
@@ -1210,13 +1226,12 @@ function createCrown(THREE, x, y, z) {
   );
 }
 
-function drawCube(THREE) {
-  const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+function drawCube(THREE, OBJLoader) {
   const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x5C3A21 });
 
   if (cubes.length === 0) {
-    const objLoader = new THREE.OBJLoader();
-    objLoader.load(
+    const loader = new OBJLoader();
+    loader.load(
       'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Cube.obj',
       (obj) => {
         obj.scale.set(0.5, 0.5, 0.5);
@@ -1245,6 +1260,7 @@ function drawCube(THREE) {
     return;
   }
 
+
   // Continuous movement synchronized with music (96 BPM, 2/4)
   const bpm = 96;
   const beatDuration = 60 / bpm; // 0.625 seconds per beat
@@ -1268,9 +1284,8 @@ function drawCube(THREE) {
     gameOver();
     return;
   }
-
-  const objLoader = new THREE.OBJLoader();
-  objLoader.load(
+  const loader = new OBJLoader();
+  loader.load(
     'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Cube.obj',
     (obj) => {
       obj.scale.set(0.5, 0.5, 0.5);
@@ -1413,7 +1428,7 @@ function generateLevel(THREE, OBJLoader, MTLLoader) {
   // Create exactly three crowns
   createCrown(THREE, Math.random() * 4 - 2, 0.5, 20, 0);
   createCrown(THREE, Math.random() * 4 - 2, 0.5, 40, 1);
-  createCrown(THREE, Math.random() * 4 - 2, 0.5, 60, 2);
+  createCrown(THREE, Math.random() * 4 - 2, 0.5, 60, 2);}
 
 /* ---------------------------------------------------------------
     🎮  Game Control Functions
