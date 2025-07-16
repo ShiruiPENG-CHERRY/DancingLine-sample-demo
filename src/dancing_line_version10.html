@@ -1080,11 +1080,10 @@ function createGameWorld(THREE, OBJLoader, MTLLoader) {
   generateLevel(THREE, objLoader, mtlLoader);
 }
 
-function createPlatform(THREE, OBJLoader, x, y, z, width, height, depth) {
+function createPlatform(THREE, objLoader, x, y, z, width, height, depth) {
   const platformMaterial = new THREE.MeshBasicMaterial({ color: 0x444444 });
 
-  const loader = new OBJLoader();
-  loader.load(
+  objLoader.load(
     'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/map03.obj',
     (obj) => {
       const platform = obj;
