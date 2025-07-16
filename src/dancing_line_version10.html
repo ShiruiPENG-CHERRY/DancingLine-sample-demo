@@ -27,7 +27,7 @@ document.head.appendChild(mapScript);
     const MTLLoader = mtlLoaderMod.MTLLoader || mtlLoaderMod.default?.MTLLoader || THREE.MTLLoader;
     window.mtlLoader = new MTLLoader();
 
-    initDancingLine(THREE);
+    initDancingLine(THREE, OBJLoader, MTLLoader);
   } catch (err) {
     console.error("Module load failed:", err);
   }
