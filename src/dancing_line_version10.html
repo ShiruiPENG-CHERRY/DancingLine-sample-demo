@@ -1255,11 +1255,6 @@ function drawCube(THREE, objLoader) {
         return;
       }
       cube.position.set(newX, cubePosition.y, newZ);
-      if (checkCollision(cube)) {
-        moveDir = 3;
-        gameOver();
-        return;
-      }
       cubePosition.x = newX;
       cubePosition.z = newZ;
     }
@@ -1341,11 +1336,6 @@ function drawCube(THREE, objLoader) {
         }
       });
       obj.position.set(newX, cubePosition.y, newZ);
-      if (checkCollision(obj)) {
-        moveDir = 3;
-        gameOver();
-        return;
-      }
       cubes.push(obj);
       scene.add(obj);
       // Update cubePosition after successful cube placement
@@ -1368,11 +1358,6 @@ function drawCube(THREE, objLoader) {
       const newCube = new THREE.Mesh(fallbackGeometry, cubeMaterial);
       newCube.position.set(newX, cubePosition.y, newZ);
       newCube.castShadow = true;
-      if (checkCollision(newCube)) {
-        moveDir = 3;
-        gameOver();
-        return;
-      }
       cubes.push(newCube);
       scene.add(newCube);
       cubePosition.x = newX;
@@ -1417,7 +1402,7 @@ function checkDiamond(cube, THREE) {
       scene.remove(gem);
       gems.splice(i, 1);
       score += 10;
-      createTree(THREE, null, Math.random() * 4 - 2, 0, gem.position.z - cubePosition.z);
+      createTree(THREE, objLoader, Math.random() * 4 - 2, 0, gem.position.z - cubePosition.z);
       display("💎 Gem collected! +10 points");
       break;
     }
@@ -1552,7 +1537,7 @@ function updateScore() {
       gems.splice(index, 1);
       score += 10;
       updateScore();
-      createTree(THREE, null, Math.random() * 4 - 2, 0, gem.position.z - cubePosition.z);
+      createTree(THREE, objLoader, Math.random() * 4 - 2, 0, gem.position.z - cubePosition.z);
       display("💎 Gem collected! +10 points");
     }
   });
