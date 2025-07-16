@@ -1073,8 +1073,11 @@ function hideSuccessModal() {
     🌍  Game World Creation
 ---------------------------------------------------------------- */
 function createGameWorld(THREE, OBJLoader, MTLLoader) {
-  createPlatform(THREE, OBJLoader, 0, 0, 0, 20, 0.2, 20);
-  generateLevel(THREE, OBJLoader, MTLLoader);
+  const objLoader = new OBJLoader();
+  const mtlLoader = new MTLLoader();
+  window.objLoader = objLoader; // Store globally for updateGameLogic
+  createPlatform(THREE, objLoader, 0, 0, 0, 20, 0.2, 20);
+  generateLevel(THREE, objLoader, mtlLoader);
 }
 
 function createPlatform(THREE, OBJLoader, x, y, z, width, height, depth) {
