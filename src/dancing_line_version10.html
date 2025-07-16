@@ -1112,7 +1112,7 @@ function createPlatform(THREE, objLoader, x, y, z, width, height, depth) {
   );
 }
 
-function createTree(THREE, MTLLoader, x, y, z) {
+function createTree(THREE, objLoader, x, y, z) {
   const treeModels = [
     'Tree_Apple_01.obj',
     'Tree_Apple_02.obj',
@@ -1130,8 +1130,7 @@ function createTree(THREE, MTLLoader, x, y, z) {
     color: new THREE.Color(Math.random(), Math.random(), Math.random())
   });
 
-  const loader = new OBJLoader();
-  loader.load(
+  objLoader.load(
     `https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/${randomTree}`,
     (obj) => {
       obj.scale.set(0.15, 0.15, 0.15);
@@ -1181,27 +1180,21 @@ function changeTree() {
   }
 }
 
-function createGem(x, y, z) {
-    const gemGeometry = new THREE.OctahedronGeometry(0.3);
-    const gemMaterial = new THREE.MeshLambertMaterial({ 
-      color: 0xffd700,
-      emissive: 0x444400
-    });
-    
-    const gem = new THREE.Mesh(gemGeometry, gemMaterial);
-    gem.position.set(x, y, z);
-    gem.castShadow = true;
-    scene.add(gem);
-    gems.push(gem);
-    
-    return gem;
-  }
+function createGem(THREE, x, y, z) {
+  const gemGeometry = new THREE.OctahedronGeometry(0.3);
+  const gemMaterial = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+  const gem = new THREE.Mesh(gemGeometry, gemMaterial);
+  gem.position.set(x, y, z);
+  gem.castShadow = true;
+  scene.add(gem);
+  gems.push(gem);
+  return gem;
+}
 
-function createCrown(THREE, OBJLoader, x, y, z, soundIndex) {
+function createCrown(THREE, objLoader, x, y, z, soundIndex) {
   const crownMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-  const loader = new OBJLoader();
-  loader.load(
+  objLoader.load(
     'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Crown_0.obj',
     (obj) => {
       obj.scale.set(0.5, 0.5, 0.5);
@@ -1222,7 +1215,7 @@ function createCrown(THREE, OBJLoader, x, y, z, soundIndex) {
       console.error("Error loading Crown_0.obj:", err);
       // Fallback to BoxGeometry
       const fallbackGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-      const fallbackCrown = new THREE.Mesh(fallbackGeometry, crownMaterial);
+      const fallbackCrown = new THREE.Mesh(fallbackGeometry, cubeMaterial);
       fallbackCrown.position.set(x, y, z);
       fallbackCrown.castShadow = true;
       fallbackCrown.userData = { soundIndex };
@@ -1232,12 +1225,55 @@ function createCrown(THREE, OBJLoader, x, y, z, soundIndex) {
   );
 }
 
-function drawCube(THREE, OBJLoader) {
+function drawCube(THREE, objLoader) {
   const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x5C3A21 });
 
+  // Fallback to BoxGeometry if objLoader is undefined
+  if (!objLoader || typeof objLoader.load !== 'function') {
+    console.warn("objLoader is undefined or invalid, using BoxGeometry fallback");
+    const fallbackGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const cube = new THREE.Mesh(fallbackGeometry, cubeMaterial);
+    cube.position.set(cubePosition.x, cubePosition.y, cubePosition.z);
+    if (cubes.length > 0) {
+      const lastCube = cubes[cubes.length - 1];
+      let newX = cubePosition.x;
+      let newZ = cubePosition.z;
+      if (moveDir === 0) { // Forward (z+)
+        newZ = lastCube.position.z + 0.5;
+        newX = lastCube.position.x;
+      } else if (moveDir === 1) { // Right (x+)
+        newX = lastCube.position.x + 0.5;
+        newZ = lastCube.position.z;
+      }
+      // Boundary check
+      if (newX < -10 || newX > 10 || newZ > 20 || newZ < 0) {
+        moveDir = 3;
+        gameOver();
+        return;
+      }
+      cube.position.set(newX, cubePosition.y, newZ);
+      if (checkCollision(cube)) {
+        moveDir = 3;
+        gameOver();
+        return;
+      }
+      cubePosition.x = newX;
+      cubePosition.z = newZ;
+    }
+    cube.castShadow = true;
+    scene.add(cube);
+    cubes.push(cube);
+    if (cubes.length > 100) {
+      const oldestCube = cubes.shift();
+      scene.remove(oldestCube);
+    }
+    camera.position.set(cubePosition.x, cubePosition.y + 5, cubePosition.z + cameraDistance);
+    camera.lookAt(cubePosition.x, cubePosition.y, cubePosition.z);
+    return;
+  }
+
   if (cubes.length === 0) {
-    const loader = new OBJLoader();
-    loader.load(
+    objLoader.load(
       'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Cube.obj',
       (obj) => {
         obj.scale.set(0.5, 0.5, 0.5);
