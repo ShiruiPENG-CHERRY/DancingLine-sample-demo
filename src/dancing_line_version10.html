@@ -82,6 +82,12 @@ let instructionModal = null;
 let volumeModal = null;
 let successModal = null;
 
+// 新增全局变量
+let pathPoints = [];
+let currentPathIndex = 0;
+let allowTurn = false;
+let playerHasTurned = false;
+
 /* ---------------------------------------------------------------
     🚀  Initialization
 ---------------------------------------------------------------- */
@@ -1094,12 +1100,29 @@ function createPlatform(THREE, objLoader, x, y, z, width, height, depth) {
         if (child.isMesh) {
           child.material = platformMaterial;
           child.receiveShadow = true;
+          // 采样中心线点
+          if (child.geometry && child.geometry.attributes && child.geometry.attributes.position) {
+            const pos = child.geometry.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+              const px = pos.getX(i);
+              const py = pos.getY(i);
+              const pz = pos.getZ(i);
+              // 只采样 x 绝对值最小的点（中心线）
+              if (Math.abs(px) < 0.5) {
+                pathPoints.push({ x: px, y: py + 0.5, z: pz });
+              }
+            }
+            // 按 z 排序
+            pathPoints.sort((a, b) => a.z - b.z);
+          }
         }
       });
       platform.position.set(x, y, z);
       platform.scale.set(width / 10, height / 10, depth / 10);
       scene.add(platform);
       platforms.push(platform);
+      // 树自动生成
+      generateTreesAlongPath(THREE, objLoader);
     },
     undefined,
     (err) => {
@@ -1113,6 +1136,15 @@ function createPlatform(THREE, objLoader, x, y, z, width, height, depth) {
       platforms.push(fallbackPlatform);
     }
   );
+}
+
+function generateTreesAlongPath(THREE, objLoader) {
+  const offset = 2.5; // 树离中心线的距离
+  for (let i = 0; i < pathPoints.length; i += 6) { // 每隔6个点
+    const pt = pathPoints[i];
+    createTree(THREE, objLoader, pt.x + offset, pt.y, pt.z);
+    createTree(THREE, objLoader, pt.x - offset, pt.y, pt.z);
+  }
 }
 
 function createTree(THREE, objLoader, x, y, z) {
@@ -1228,7 +1260,8 @@ function createCrown(THREE, objLoader, x, y, z, soundIndex) {
   );
 }
 
-function drawCube(THREE, objLoader) {
+function drawCube(THREE) {
+  const objLoader = window.objLoader;
   const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x5C3A21 });
 
   // Fallback to BoxGeometry if objLoader is undefined
@@ -1271,7 +1304,7 @@ function drawCube(THREE, objLoader) {
   }
 
   if (cubes.length === 0) {
-    window.objLoader.load(
+    objLoader.load(
       'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Cube.obj',
       (obj) => {
         obj.scale.set(0.5, 0.5, 0.5);
@@ -1300,7 +1333,6 @@ function drawCube(THREE, objLoader) {
     return;
   }
 
-
   // Continuous movement synchronized with music (96 BPM, 2/4)
   const bpm = 96;
   const beatDuration = 60 / bpm; // 0.625 seconds per beat
@@ -1325,7 +1357,7 @@ function drawCube(THREE, objLoader) {
     return;
   }
 
-  window.loader.load(
+  objLoader.load(
     'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/lib/Mesh/Cube.obj',
     (obj) => {
       obj.scale.set(0.5, 0.5, 0.5);
@@ -1515,145 +1547,129 @@ function updateScore() {
   ---------------------------------------------------------------- */
   function updateGameLogic() {
     if (gameState !== 'playing') return;
-  
-     // Move cube trail forward (z+) automatically, synchronized with 96 BPM
-  cubePosition.z += gameSpeed;
-  drawCube(THREE);
 
-  // Check collisions with latest cube
-  const latestCube = cubes[cubes.length - 1];
-
-  // Boundary check (map width: ±10, depth: 0 to 20)
-  if (latestCube.position.x < -10 || latestCube.position.x > 10 || latestCube.position.z > 20 || latestCube.position.z < 0) {
-    moveDir = 3;
-    gameOver();
-    return;
-  }
-    // Gem collision
-  gems.forEach((gem, index) => {
-    const distance = latestCube.position.distanceTo(gem.position);
-    if (distance < 0.8) {
-      scene.remove(gem);
-      gems.splice(index, 1);
-      score += 10;
-      updateScore();
-      createTree(THREE, objLoader, Math.random() * 4 - 2, 0, gem.position.z - cubePosition.z);
-      display("💎 Gem collected! +10 points");
+    // 自动前进：沿当前方向每帧推进 gameSpeed
+    if (moveDir === 0) {
+      cubePosition.z += gameSpeed;
+    } else if (moveDir === 1) {
+      cubePosition.x += gameSpeed;
     }
-  });
 
-  // Crown collision
-  crowns.forEach((crown, index) => {
-    const distance = latestCube.position.distanceTo(crown.position);
-    if (distance < 0.8) {
-      scene.remove(crown);
-      const soundIndex = crown.userData.soundIndex;
-      crowns.splice(index, 1);
-      score += 50;
-      updateScore();
-      playCrownSound(soundIndex);
-      display("👑 Crown collected! +50 points");
-      if (crowns.length === 0) {
-        levelComplete();
+    // 判断是否到达下一个格点（0.5 的倍数），如果是则画一个 cube
+    const lastCube = cubes[cubes.length - 1];
+    let shouldDraw = false;
+    if (moveDir === 0) {
+      // z 方向，判断 z 是否到达下一个 0.5 的倍数
+      if (Math.abs(cubePosition.z - Math.round(cubePosition.z * 2) / 2) < gameSpeed / 2) {
+        cubePosition.z = Math.round(cubePosition.z * 2) / 2;
+        if (!lastCube || Math.abs(lastCube.position.z - cubePosition.z) >= 0.5) {
+          shouldDraw = true;
+        }
+      }
+    } else if (moveDir === 1) {
+      // x 方向，判断 x 是否到达下一个 0.5 的倍数
+      if (Math.abs(cubePosition.x - Math.round(cubePosition.x * 2) / 2) < gameSpeed / 2) {
+        cubePosition.x = Math.round(cubePosition.x * 2) / 2;
+        if (!lastCube || Math.abs(lastCube.position.x - cubePosition.x) >= 0.5) {
+          shouldDraw = true;
+        }
       }
     }
-  });
+    if (shouldDraw) {
+      drawCube(THREE);
+    }
 
-  // Tree collision (outside map, x < -10 or x > 10)
-  trees.forEach(tree => {
-    const distance = latestCube.position.distanceTo(tree.position);
-    if (distance < 0.8) {
+    // 检查碰撞、钻石、皇冠、树、边界等
+    const latestCube = cubes[cubes.length - 1];
+    if (!latestCube) return;
+    // 边界检查
+    if (latestCube.position.x < -10 || latestCube.position.x > 10 || latestCube.position.z > 20 || latestCube.position.z < 0) {
+      moveDir = 3;
+      gameOver();
+      return;
+    }
+    // Gem 碰撞
+    gems.forEach((gem, index) => {
+      const distance = latestCube.position.distanceTo(gem.position);
+      if (distance < 0.8) {
+        scene.remove(gem);
+        gems.splice(index, 1);
+        score += 10;
+        updateScore();
+        createTree(THREE, objLoader, Math.random() * 4 - 2, 0, gem.position.z - cubePosition.z);
+        display("💎 Gem collected! +10 points");
+      }
+    });
+    // Crown 碰撞
+    crowns.forEach((crown, index) => {
+      const distance = latestCube.position.distanceTo(crown.position);
+      if (distance < 0.8) {
+        scene.remove(crown);
+        const soundIndex = crown.userData.soundIndex;
+        crowns.splice(index, 1);
+        score += 50;
+        updateScore();
+        playCrownSound(soundIndex);
+        display("👑 Crown collected! +50 points");
+        if (crowns.length === 0) {
+          levelComplete();
+        }
+      }
+    });
+    // Tree 碰撞
+    trees.forEach(tree => {
+      const distance = latestCube.position.distanceTo(tree.position);
+      if (distance < 0.8) {
+        moveDir = 3;
+        gameOver();
+      }
+    });
+    // 掉下地图
+    if (latestCube.position.y < -5) {
       moveDir = 3;
       gameOver();
     }
-  });
-
-  // Fall off map (y < -5)
-  if (latestCube.position.y < -5) {
-    moveDir = 3;
-    gameOver();
+    // 关卡完成
+    if (cubePosition.z > level * 60) {
+      level++;
+      score += 100;
+      gameSpeed += 0.01;
+      updateScore();
+      generateLevel(THREE, objLoader, null);
+      levelComplete();
+    }
+    // 动画效果
+    gems.forEach(gem => {
+      gem.rotation.y += 0.05;
+      gem.position.y += Math.sin(Date.now() * 0.001 + gem.position.x) * 0.01;
+    });
   }
-
-  // Level completion
-  if (cubePosition.z > level * 60) {
-    level++;
-    score += 100;
-    gameSpeed += 0.01;
-    updateScore();
-    generateLevel(THREE, null, null);
-    levelComplete();
-  }
-  
-  // Animate gems
-  gems.forEach(gem => {
-    gem.rotation.y += 0.05;
-    gem.position.y += Math.sin(Date.now() * 0.001 + gem.position.x) * 0.01;
-  });
-}
   
 /* ---------------------------------------------------------------
     🎮  Input Controls
 ---------------------------------------------------------------- */
 function setupControls() {
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
+  document.addEventListener('keydown', handleKeyDown);
+}
+function handleKeyDown(event) {
+  if (gameState !== 'playing') {
+    if (event.code === 'KeyP') pauseGame();
+    if (event.code === 'Escape') startMenuState();
+    return;
   }
-  
-  function handleKeyDown(event) {
-    if (gameState !== 'playing') {
-      if (event.code === 'KeyP') pauseGame();
-      if (event.code === 'Escape') startMenuState();
-      return;
-    }
-  
-    switch (event.code) {
-      case 'ArrowLeft':
-      case 'KeyA':
-        if (moveDir === 0) {
-          oldPos = cubePosition.z;
-          moveDir = 1;
-        }
-        cubePosition.x -= 0.5;
-        drawCube(THREE);
-        break;
-      case 'ArrowRight':
-      case 'KeyD':
-        if (moveDir === 0) {
-          oldPos = cubePosition.z;
-          moveDir = 1;
-        }
-        cubePosition.x += 0.5;
-        drawCube(THREE);
-        break;
-      case 'ArrowUp':
-      case 'KeyW':
-        if (moveDir === 1) {
-          oldPos = cubePosition.x;
-          moveDir = 0;
-        }
-        cubePosition.z += 0.5;
-        drawCube(THREE);
-        break;
-      case 'ArrowDown':
-      case 'KeyS':
-        moveLineDown();
-        break;
-      case 'Space':
-        event.preventDefault();
-        jumpLine();
-        break;
-      case 'KeyP':
-        pauseGame();
-        break;
-      case 'Escape':
-        startMenuState();
-        break;
+  if (allowTurn) {
+    if (['Space', 'KeyA', 'KeyD', 'KeyW'].includes(event.code)) {
+      // 切换到下一个 pathPoint
+      playerHasTurned = true;
+      allowTurn = false;
+      cubePosition = { ...pathPoints[currentPathIndex] };
+      drawCube(THREE);
+      currentPathIndex++;
     }
   }
-  
-  function handleKeyUp(event) {
-    // Handle key releases if needed
-  }
+  if (event.code === 'KeyP') pauseGame();
+  if (event.code === 'Escape') startMenuState();
+}
   
   function moveLineLeft() {
     if (linePosition.x > -3) {
