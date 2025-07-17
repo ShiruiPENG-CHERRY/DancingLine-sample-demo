@@ -92,6 +92,8 @@ const importMap = {
   let pathDirection = new THREE.Vector3(0, 0, 1); // 初始方向z+
   let pathStepSize = 0.5;
   let pathStartPoint = null;
+  let currentSegmentIndex = 0;
+  let segmentProgress = 0;
   
   /* ---------------------------------------------------------------
       🚀  Initialization
@@ -1094,12 +1096,21 @@ const importMap = {
     generateLevel(THREE, objLoader, mtlLoader);
   }
   
-  // 自动获取地形起点和方向（z最小和次小点）
-  function getTerrainStartAndDirection(terrainMesh) {
-    let minZ = Infinity;
-    let secondMinZ = Infinity;
-    let start = null;
-    let next = null;
+  // Detect turning points
+  function findTurnPoints(points, minAngleDeg) {
+    const turns = [];
+    for (let i = 1; i < points.length - 1; i++) {
+      const v1 = points[i].clone().sub(points[i - 1]).normalize();
+      const v2 = points[i + 1].clone().sub(points[i]).normalize();
+      const angle = v1.angleTo(v2) * 180 / Math.PI;
+      if (angle > minAngleDeg) turns.push(i);
+    }
+    return turns;
+  }
+
+  // Automatically extract the main path centerline from the terrain mesh
+  function extractMainPathFromTerrain(terrainMesh) {
+    let zToGroup = {};
     terrainMesh.traverse(child => {
       if (child.isMesh && child.geometry && child.geometry.attributes.position) {
         const pos = child.geometry.attributes.position;
@@ -1107,21 +1118,23 @@ const importMap = {
           const x = pos.getX(i);
           const y = pos.getY(i);
           const z = pos.getZ(i);
-          if (z < minZ) {
-            secondMinZ = minZ;
-            next = start;
-            minZ = z;
-            start = new THREE.Vector3(x, y + 2, z);
-          } else if (z < secondMinZ) {
-            secondMinZ = z;
-            next = new THREE.Vector3(x, y + 2, z);
-          }
+          const zKey = Math.round(z); // Precision 1, ensure multiple points per group
+          if (!zToGroup[zKey]) zToGroup[zKey] = [];
+          zToGroup[zKey].push({x, y, z});
         }
       }
     });
-    // 方向为 next - start，若无则 fallback -z
-    let direction = (next && start) ? next.clone().sub(start).normalize() : new THREE.Vector3(0, 0, -1);
-    return { start, direction };
+    let pathPoints = [];
+    Object.keys(zToGroup).map(Number).sort((a, b) => a - b).forEach(zKey => {
+      let group = zToGroup[zKey];
+      group.sort((a, b) => a.x - b.x);
+      let mid = Math.floor(group.length / 2);
+      let pt = group[mid];
+      // Use the maximum y value in the group to ensure the point is on the surface
+      let maxY = Math.max(...group.map(p => p.y));
+      pathPoints.push(new THREE.Vector3(pt.x, maxY + 0.5, pt.z));
+    });
+    return pathPoints;
   }
 
   function createPlatform(THREE, objLoader, x, y, z, width, height, depth) {
@@ -1135,58 +1148,31 @@ const importMap = {
           if (child.isMesh) {
             child.material = platformMaterial;
             child.receiveShadow = true;
-            // 采样中心线点
-            if (child.geometry && child.geometry.attributes && child.geometry.attributes.position) {
-              const pos = child.geometry.attributes.position;
-              for (let i = 0; i < pos.count; i++) {
-                const px = pos.getX(i);
-                const py = pos.getY(i);
-                const pz = pos.getZ(i);
-                // 只采样 x 绝对值最小的点（中心线）
-                if (Math.abs(px) < 0.5) {
-                  pathPoints.push({ x: px, y: py + 0.5, z: pz });
-                }
-              }
-              // 按 z 排序
-              pathPoints.sort((a, b) => a.z - b.z);
-              // 计算转折点
-              turnPoints = [];
-              for (let i = 1; i < pathPoints.length - 1; i++) {
-                const prev = pathPoints[i - 1];
-                const curr = pathPoints[i];
-                const next = pathPoints[i + 1];
-                const dx1 = curr.x - prev.x;
-                const dz1 = curr.z - prev.z;
-                const dx2 = next.x - curr.x;
-                const dz2 = next.z - curr.z;
-                // 判断方向是否变化
-                if (Math.abs(dx1 - dx2) > 1e-3 || Math.abs(dz1 - dz2) > 1e-3) {
-                  turnPoints.push(i);
-                }
-              }
-            }
           }
         });
         platform.position.set(x, y, z);
         platform.scale.set(width / 10, height / 10, depth / 10);
         scene.add(platform);
         platforms.push(platform);
-        // 自动推断起点和方向
-        let startAndDir = getTerrainStartAndDirection(platform);
-        pathStartPoint = startAndDir.start;
-        pathDirection = startAndDir.direction;
-        // 自动采样路径
-        pathPoints = extractPathFromTerrain(platform, pathStartPoint, pathDirection, pathStepSize);
+        // Automatically extract the main path centerline
+        pathPoints = extractMainPathFromTerrain(platform);
+        console.log('Main path point count:', pathPoints.length, pathPoints);
+        if (pathPoints.length < 2) {
+          alert('Not enough main path points in the terrain to generate a path!');
+          return;
+        }
         turnPoints = findTurnPoints(pathPoints, 10);
         currentPathIndex = 0;
         currentTurnIndex = 0;
-        // 初始化cube位置和摄像机
+        currentSegmentIndex = 0;
+        segmentProgress = 0;
+        // Initialize cube position and camera
         if (pathPoints.length > 0) {
           cubePosition = { x: pathPoints[0].x, y: pathPoints[0].y, z: pathPoints[0].z };
           camera.position.set(cubePosition.x, cubePosition.y + 5, cubePosition.z + cameraDistance);
           camera.lookAt(cubePosition.x, cubePosition.y, cubePosition.z);
         }
-        // 树自动生成
+        // Automatically generate trees along the path
         generateTreesAlongPath(THREE, objLoader);
       },
       undefined,
@@ -1201,39 +1187,6 @@ const importMap = {
         platforms.push(fallbackPlatform);
       }
     );
-  }
-  
-  // 自动从地形采样路径
-  function extractPathFromTerrain(terrainMesh, startPoint, direction, stepSize) {
-    const points = [];
-    let pos = startPoint.clone();
-    let dir = direction.clone().normalize();
-    let maxSteps = 300;
-    for (let i = 0; i < maxSteps; i++) {
-      // 向下射线检测
-      const ray = new THREE.Raycaster(pos.clone().add(new THREE.Vector3(0, 10, 0)), new THREE.Vector3(0, -1, 0));
-      const intersects = ray.intersectObject(terrainMesh, true);
-      if (intersects.length > 0) {
-        const hit = intersects[0].point;
-        points.push(hit.clone());
-        pos = hit.clone().add(dir.clone().setLength(stepSize));
-      } else {
-        break;
-      }
-    }
-    return points;
-  }
-
-  // 检测转折点
-  function findTurnPoints(points, minAngleDeg) {
-    const turns = [];
-    for (let i = 1; i < points.length - 1; i++) {
-      const v1 = points[i].clone().sub(points[i - 1]).normalize();
-      const v2 = points[i + 1].clone().sub(points[i]).normalize();
-      const angle = v1.angleTo(v2) * 180 / Math.PI;
-      if (angle > minAngleDeg) turns.push(i);
-    }
-    return turns;
   }
   
   function generateTreesAlongPath(THREE, objLoader) {
@@ -1676,9 +1629,9 @@ const importMap = {
     }
   
     // Create exactly three crowns
-    createCrown(THREE, Math.random() * 4 - 2, 0.5, 20, 0);
-    createCrown(THREE, Math.random() * 4 - 2, 0.5, 40, 1);
-    createCrown(THREE, Math.random() * 4 - 2, 0.5, 60, 2);
+    createCrown(THREE, Math.random() * 4 - 2, 0.5, 0, 20);
+    createCrown(THREE, Math.random() * 4 - 2, 0.5, 0, 40);
+    createCrown(THREE, Math.random() * 4 - 2, 0.5, 0, 60);
     resetPathFollowing(); // Add this line
   }
   
