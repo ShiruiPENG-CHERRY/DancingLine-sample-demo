@@ -129,15 +129,11 @@ async function setupAudio() {
 
 async function loadBackgroundMusic() {
   try {
-    const musicUrl = (gameState === 'menu') 
-      ? 'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/menu_music.mp3'
-      : 'https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/canon_piano_demo.mp3';
-    const response = await fetch(musicUrl);
+    const response = await fetch('https://raw.githubusercontent.com/ShiruiPENG-CHERRY/DancingLine-sample-demo/main/music.mp3');
     const arrayBuffer = await response.arrayBuffer();
     backgroundMusic = await audioContext.decodeAudioData(arrayBuffer);
   } catch (error) {
     console.log("Failed to load background music:", error);
-    display("⚠️ Failed to load background music.");
   }
 }
 
